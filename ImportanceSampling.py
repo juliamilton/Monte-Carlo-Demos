@@ -32,7 +32,6 @@ Created on Mon Dec  7 17:08:40 2020
 # RUN THIS COMMAND FIRST! 
 #%run ./my_script.py
 #%matplotlib qt
-
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -40,196 +39,166 @@ import numpy as np
 import scipy.stats as st
 import seaborn as sns
 import pandas as pd
+import random
 
 
 
 
 class AnimatedScatter(object):
-    """Draws the scatter plot as an animation using FuncAnimation"""
-
-    def __init__(self, numpoints, targetFunction, domain, ymax):
+    """An animated scatter plot using matplotlib.animations.FuncAnimation."""
+    def __init__(self, numpoints, targetFunction, proposalFunction, domain):
         self.numpoints = numpoints+2
         self.targetFunction = targetFunction
+        self.proposalFunction = proposalFunction
         self.domain = domain
-        self.ymax = ymax
+        self.scaling = max(self.targetFunction(self.domain))
+    #def __init__(self):
         self.stream = self.data_stream()
 
-        # Setup the figure and axes
+        # Setup the figure and axes...
         self.fig, self.ax = plt.subplots()
-        self.textvar = self.ax.text(0.05, 0.95, "Init", transform=self.ax.transAxes, fontsize=10, verticalalignment='top')
-        
-        # Setup FuncAnimation.
+        self.textvar = self.ax.text(0.05, 0.95, "Init", transform=self.ax.transAxes, fontsize=12, verticalalignment='top')
+        # Then setup FuncAnimation.
         self.ani = animation.FuncAnimation(self.fig, self.update, interval=1, 
                                           init_func=self.setup_plot, blit=False, cache_frame_data=False, save_count=self.numpoints)
 
     def setup_plot(self):
-        """Initialize the scatterplot"""
-
+        """Initial drawing of the scatter plot."""
         x, y, s, c = next(self.stream).T
         self.scat = self.ax.scatter(x, y, c=c, s=s, vmin=0, vmax=1,
-                                    cmap="Set3", edgecolor="none")
-        self.ax.axis([min(self.domain), max(self.domain), -2, self.ymax])
-
-        #Draw lines showing the target and proposal distributions
-        line = self.ax.plot(self.domain, 100*self.targetFunction(self.domain), 
-                                    'y:', label = "Target Distribution")
-        #initialize arrow and hist
-        self.arrow = self.ax.arrow(0,0, 0.1,0.1, head_width = 0.01,  
-          width = 0.006)
-
-        self.countH, self.binsH, self.barsH = self.ax.hist(self.Ex, bins=20, color='#0504aa',
-                            alpha=0.7, rwidth=0.85)
-        #Add legend and title
+                                    cmap="viridis", edgecolor="none")
+        self.ax.axis([min(self.domain), max(self.domain), -0.2, self.scaling+0.1])
+        line = self.ax.plot(self.domain, self.targetFunction(self.domain), 'b:', label = "Target Distribution")
         self.ax.legend( loc = 'upper right', prop={'size': 6}, borderpad=1)
-
-        self.fig.suptitle('Markov Chain Monte Carlo', fontsize=10)
-        
+        self.fig.suptitle('Importance Sampling \n Using proposal draws from a Uniform distribution', fontsize=10)
+        #self.hist = plt.hist(x,bins =np.linspace(-4, 4, 50))
+        # For FuncAnimation's sake, we need to return the artist we'll be using
+        # Note that it expects a sequence of artists, thus the trailing comma.
         return self.scat,
     
 
     def data_stream(self):
         """Generate data corresponding to selections from the target distribution and the proposal"""        
-
-        #initialize
-        self.state = np.zeros(self.numpoints)
-        self.acceptprob = np.zeros(self.numpoints)
-        self.apost = self.targetFunction(self.state[0])
-
-        self.numaccept = 0
-        self.ExArray = []
-
-        self.acceptedSamples = []
-        self.acceptPx = []
-        self.acceptX = []
-        self.s = []
+        
+        zerosForPlotting = np.zeros(self.numpoints)
+        proposalDraws = np.random.uniform(-4,4, self.numpoints)
+        #U = np.random.uniform(0, 1, self.numpoints)*self.k*self.proposalFunction(Z)
+        
+        proposalDraws= np.array(proposalDraws)
+        #U = np.array(U)
+        y = self.proposalFunction(proposalDraws)
+        xyFull = np.column_stack((proposalDraws,y))
+        
         
         j=1
-
-        #run MCMC as many times as the user has defined
-        while j < self.numpoints-1:
-        
-            def mcmc(iter):
-                
-                #get a proposal candidate by adding a N(0,1) random number to the previous point
-                acandidate = self.state[j] + np.random.normal(0, 1)
-
-                #evaluate the probability of the candidate
-                acandpost = self.targetFunction(acandidate)
-
-                #calculate acceptance probability, a
-                self.acceptprob = acandpost/self.apost
-
-                #generate a uniform random nunmber between 0 and 1
-                u = np.random.uniform()
-
-                #accept the point if u<a
-                if u <= self.acceptprob:
-                    
-                    # if you accept, change the state to the point you are currently at
-                    self.state[j+1] = acandidate
-
-                    #the rest of this is to calculate expected value and plot
-                    self.apost = acandpost
-                    self.numaccept = self.numaccept + 1
-                    self.acceptedSamples.append(9) #marking samples as accepted or rejected to change color
-                    self.s.append(35)
-                    self.acceptPx.append(-0.5)
-                    self.acceptX.append(acandidate)
-                    self.ExArray.append(acandidate)
-                    
-                else:
-                    #if you reject, stay at the previous point 
-                    self.state[j+1] = self.state[j]
-
-                    #the rest of this is to calculate expected value and plot
-                    self.acceptedSamples.append(0)
-                    self.s.append(20)
-                    self.acceptPx.append(-0.5)
-                    self.acceptX.append(acandidate)
-
-                
-                return [self.acceptedSamples, self.s, self.acceptPx, self.acceptX]
-
+        while j < self.numpoints+1:
+        #while True:
             
-            [c, s, acceptPx, acceptX] = mcmc(1)
+            def rejection_sampling(iter):
+                targetProbs = []
+                proposalProbs = []
+                c = []
+                s = []
+                acceptPx = []
+                acceptX = []
+                p_i_array = []
 
-            #for plotting
+                t_x = self.targetFunction(proposalDraws)
+                #p_x = self.proposalFunction(proposalDraws)
+                p_x = 1/self.numpoints
+
+                numer = np.divide(t_x,p_x)
+                #denom = np.sum(np.divide(t_x,p_x))
+                denom = np.sum(t_x)
+
+                p_i = np.divide(numer, denom)
+
+                weightedSamples = random.choices(population = proposalDraws, weights = p_i, k=self.numpoints)
+
+                s =np.multiply(p_i,300)
+
+                c = np.random.uniform(0,1,self.numpoints)
+                
+                return [c, s, p_i, weightedSamples]
+            
+            [c, s, p_i_array, weightedSamples] = rejection_sampling(1)
+            
             s = np.array(s)
             c = np.array(c)
-            y = np.array(acceptPx)
-            x = np.array(acceptX)
+            xy = xyFull
+            pi = np.array(p_i_array)
+            #PEstArray = np.array(acceptPx)
+            #XEstArray = np.multiply(np.square(proposalDraws[:int(j-1)]),pi[:int(j-1)])
+            XEstArray = np.square(np.array(weightedSamples[:int(j-1)]))
+            #PEstArray = np.square(XEstArray) #for testing, change this
+            meanXEst2Array = np.mean(XEstArray)
 
-            #for calculating expected value
-            self.Ex = np.array(self.ExArray)
-            self.meanPEst = np.mean(self.Ex)         #calculate current expected value
-            self.varPEst = np.var(self.Ex)/len(self.Ex)         #calculate current variance measure
+            self.meanPEst = np.mean(XEstArray)
+            #self.varPEst = np.std(PEstArray)
+            self.varPEst = np.var(XEstArray)/len(XEstArray)
+            
+            #print(self.varPEst)
+
+            print(XEstArray)
+
+            #pi = np.multiply(pi, proposalDraws[:int(j)])
    
             j = j+1
-
-            yield np.c_[x[:int(j-1)], y[:int(j-1)], s[:int(j-1)], c[:int(j-1)]]
-            
+            #yield np.c_[xy[:int(j-1),0], pi[:int(j-1)], s[:int(j-1)], c[:int(j-1)]]
+            yield np.c_[xy[:int(j-1),0], zerosForPlotting[:int(j-1)], s[:int(j-1)], c[:int(j-1)]]
     
 
     def update(self, i):
         """Update the scatter plot."""
         data = next(self.stream)
         self.textvar.remove()
-        self.arrow.remove()
-        t = [b.remove() for b in self.barsH]
-        # Set x and y data
+        # Set x and y data...
         self.scat.set_offsets(data[:, :2])
         # Set sizes...
+        #self.scat.set_sizes(300 * abs(data[:, 2])**1.5 + 100)
         self.scat.set_sizes(data[:,2])
-        # Set colors
+        # Set colors..
         self.scat.set_array(data[:, 3])
 
-        self.countH, self.binsH, self.barsH = self.ax.hist(self.Ex, bins=20, color='#0504aa',
-                            alpha=0.7, rwidth=0.85)
-        #Draw arrow line
-        self.arrow = self.ax.arrow(data[i,0],data[i,1], data[i+1,0]-data[i,0],data[i+1,1]-data[i,1], head_width = 0.15,  
-          width = 0.003, length_includes_head= True, color='b')
+        #self.hist = plt.hist(data[:, 0],bins =np.linspace(-4, 4, 50))
         # Set text
         textstr = '\n'.join((
             r'Number of draws: %d' % (i),
-            r'Percent accepted: %.2f' % np.divide(self.numaccept,i),
-            r'E(x)= %.4f ' % self.meanPEst,
+            r'E(p(x))= %.4f ' % self.meanPEst,
             r'$\sigma^2/n$= %.4f' % self.varPEst))
         self.textvar = self.ax.text(0.05, 0.95, textstr, transform=self.ax.transAxes, fontsize=10, verticalalignment='top')
+        #self.textvar = self.ax.text(max(self.domain)-2, 0.3*self.k, "E(p(x)): %d" % (i)
 
+        # We need to return the updated artist for FuncAnimation to draw..
+        # Note that it expects a sequence of artists, thus the trailing comma.
         return self.scat,
 
 
 if __name__ == '__main__':
     
-    """user should define the following section"""
-
-    # p(x) is the target distribution
+    #user should define the following
+    
     def p(x):
+           #return np.exp(-x**2/2)*(np.sin(6*x)**2 + 3*np.cos(x)**2.*np.sin(4*x)**2+1)
             return 0.2*st.norm.pdf(x, loc=1, scale=0.3)+0.7*st.norm.pdf(x, loc=-0.5, scale=0.4)
             
-            # uncomment below and comment out the above line to see an alternative example
-            #return np.exp(-x**2/2)*(np.sin(6*x)**2 + 3*np.cos(x)**2.*np.sin(4*x)**2+1)
+            
+    def q(x):
+        return st.uniform.pdf(x,-4,8)
+        #return st.norm.pdf(x, loc=0, scale=1)
     
-    #change x and y axes below if necessary
-    xmin = -3
-    xmax = 3
-    ymax = 80
-
-    #change number of runs below (recommended minimum 1000)
-    MCruns = 2000
+    xmin = -4
+    xmax = 4
     
-    """end user defined"""
+    #end user defined
     
-
     domain = np.linspace(xmin, xmax,10000, endpoint=True)
+    #k = max(p(domain)/q(domain))
 
-    """Uncomment the two lines below and the last line if you would like to save the animation as a movie file """
+    # Set up formatting for the movie files
     #Writer = animation.writers['ffmpeg']
-    #writer = Writer(fps =120, metadata=dict(artist='Me'))
+    #writer = Writer(fps =200, metadata=dict(artist='Me'))
         
-    a = AnimatedScatter(MCruns, p, domain, ymax)
+    a = AnimatedScatter(1000, p, q, domain)
     plt.show()
-
-
-    """Uncomment the line below if you would like to save the animation as a movie file """
-    #a.ani.save('MCMC3.mp4', writer=writer)
+    #a.ani.save('im.mp4', writer=writer)
