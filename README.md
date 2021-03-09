@@ -1,6 +1,6 @@
 # Monte Carlo Demos
 
-Before running the code, make sure to check out and read the corresponding tutorials provided in the PDFs. These indicate - among other things - where in the code the actual algorithm is being implemented (vs. the part of the code that plots) and where the user-defined inputs are.
+Before running the code, make sure to check out and read the corresponding tutorials provided in the PDFs (the MCMC tutorial is the only one that has the PDF at the moment, rest coming soon!). These indicate - among other things - where in the code the actual algorithm is being implemented (vs. the part of the code that plots) and where the user-defined inputs are.
 
 When you are ready to run the code, please follow the next steps:
 
